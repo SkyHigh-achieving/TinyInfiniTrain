@@ -1,0 +1,13 @@
+Git Operations Log
+SSH Public Key Fingerprint:
+256 SHA256:63lb4NZG/UdIJ3KM6QQhzwVUmoESBQcrAUM2Rr95gH8 your_email@example.com (ED25519)
+SSH Public Key Content:
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJRhLZM3FH5fFfeTLkbiZhIwvRIc/dI4Sjg1E9L1HdfR your_email@example.com
+Pushing to remote...
+Warning: Permanently added 'github.com' (ED25519) to the list of known hosts.
+git@github.com: Permission denied (publickey).
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+Push failed (expected if key not added to GitHub)

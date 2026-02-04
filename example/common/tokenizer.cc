@@ -69,31 +69,46 @@ int SampleMult(float *probabilities, int n, float coin) {
 }
 
 Tokenizer::Tokenizer(const std::string &filepath) {
+    /* ===================================== 作业 =====================================
+    TODO：实现Tokenizer二进制文件加载
+
+    文件格式说明：
+    ----------------------------------------------------------------------------------
+    | HEADER (1024 bytes)                     | VOCAB TABLE                           |
+    | magic(4B) | version(4B) | vocab_size(4B) | reserved(1012B) | token词表数据       |
+    ----------------------------------------------------------------------------------
+    ===================================== 作业 ===================================== */
     std::ifstream ifs(filepath, std::ios::binary);
-    CHECK(ifs.is_open()) << "Failed to open file: " << filepath;
+    CHECK(ifs.is_open()) << "Failed to open tokenizer file: " << filepath;
 
-    auto header_bytes = ReadSeveralBytesFromIfstream(1024, &ifs);
-    magic_number_ = BytesToType<uint32_t>(header_bytes, 0);
-    uint32_t version = BytesToType<uint32_t>(header_bytes, 4);
-    vocab_size_ = BytesToType<uint32_t>(header_bytes, 8);
+    std::vector<uint8_t> header = ReadSeveralBytesFromIfstream(1024, &ifs);
+    magic_number_ = BytesToType<uint32_t>(header, 0);
+    // version at offset 4
+    uint32_t vocab_size = BytesToType<uint32_t>(header, 8);
+    
+    CHECK(kEotMap.count(magic_number_)) << "Unknown magic number: " << magic_number_;
+    eot_token_ = kEotMap.at(magic_number_);
 
-    auto it = kEotMap.find(magic_number_);
-    CHECK(it != kEotMap.end()) << "Invalid magic number: " << magic_number_;
-    eot_token_ = it->second;
-
-    token_table_.resize(vocab_size_);
-    for (uint32_t i = 0; i < vocab_size_; ++i) {
-        uint8_t len;
-        ifs.read(reinterpret_cast<char *>(&len), 1);
-        std::string token(len, ' ');
-        ifs.read(&token[0], len);
-        token_table_[i] = std::move(token);
+    // Read Vocab Table
+    // Format assumption: len (1 byte) + string content? Or len (4 bytes)?
+    // Usually simple tokenizers use 1 byte len.
+    // Let's assume 1 byte length (uint8_t) followed by bytes.
+    for (uint32_t i = 0; i < vocab_size; ++i) {
+        std::vector<uint8_t> len_byte = ReadSeveralBytesFromIfstream(1, &ifs);
+        uint8_t len = len_byte[0];
+        std::vector<uint8_t> str_bytes = ReadSeveralBytesFromIfstream(len, &ifs);
+        std::string token_str(str_bytes.begin(), str_bytes.end());
+        vocab_[i] = token_str;
     }
 }
 
 std::string Tokenizer::Decode(uint32_t token_id) const {
-    if (token_id < token_table_.size()) {
-        return token_table_[token_id];
+    /* ===================================== 作业 =====================================
+    TODO：实现token_id到文本的转换
+    功能描述：根据token_id返回对应的文本片段
+    ===================================== 作业 ===================================== */
+    if (vocab_.count(token_id)) {
+        return vocab_.at(token_id);
     }
     return "";
 }
@@ -114,45 +129,87 @@ void Tokenizer::GenerateText(infini_train::nn::Module &model, uint32_t batch_siz
     std::cout << "The meaning of life is";
 
     auto x = std::make_shared<infini_train::Tensor>(x_tensor.To(device));
-    uint64_t state = kRngState;
+    uint64_t kRngState = kRngState;
     LOG(INFO) << "start generate text:";
     for (int t = prompt_len; t < text_length; t++) {
-        auto outputs = model.Forward({x});
-        auto logits = outputs[0]->To(Device(DeviceType::kCPU, 0));
+        /* ===================================== 作业 =====================================
+        TODO：实现单步文本生成逻辑
+        HINT：调用model.Forward推理获取logits，根据推理结果进行随机采样，调用Decode获取文本结果
+        ===================================== 作业 ===================================== */
+        // Forward pass
+        auto output = model.Forward({x})[0]; // (1, seq_len, vocab_size)
         
-        // logits: (batch_size, sequence_length, vocab_size)
-        // 获取最后一个token对应的logits进行采样
-        float *logits_ptr = static_cast<float *>(logits.DataPtr()) + (0 * sequence_length + (t - 1)) * vocab_size_;
+        // Get logits for the last token
+        // output shape: (1, seq_len, vocab_size)
+        // We need output[0, t-1, :] ?
+        // Or output[0, -1, :]?
+        // x has shape (1, seq_len). Filled up to t.
+        // We want to predict t-th token (index t).
+        // Input was x[0...seq_len-1].
+        // At step t, we have valid tokens up to t-1.
+        // We want to predict x[t].
+        // The model output at position t-1 predicts x[t].
         
-        // Softmax with Temperature=1.0 and Top-k (optional, here we do simple sampling)
-        float max_logit = logits_ptr[0];
-        for (uint32_t i = 1; i < vocab_size_; ++i) {
-            if (logits_ptr[i] > max_logit) max_logit = logits_ptr[i];
-        }
+        // We need to slice the output to get logits at t-1.
+        // output dims: (batch, seq, vocab)
+        // Slice dim 1 at index t-1.
+        auto logits = output->Slice(1, t - 1, t); // (batch, 1, vocab)
         
-        std::vector<float> probs(vocab_size_);
+        // Squeeze to (vocab)
+        // Slice returns (batch, 1, vocab).
+        // Flatten or Squeeze?
+        // We need to access data.
+        
+        // Copy logits to host to sample
+        // If device is CUDA, we need to copy.
+        // Tensor::To(CPU).
+        auto logits_cpu = logits->To(infini_train::Device(infini_train::DeviceType::kCPU, 0));
+        float* logits_ptr = static_cast<float*>(logits_cpu.DataPtr());
+        size_t vocab_size = logits_cpu.Dims().back();
+        
+        // Softmax to get probabilities (optional if SampleMult handles logits, but usually it expects probs)
+        // SampleMult expects probabilities summing to 1.
+        // So we need to apply Softmax.
+        // We can use helper or implement simple softmax here.
+        // Or use Tensor::Softmax if available?
+        // Tensor doesn't have Softmax method in `tensor.h` snippet.
+        // `autograd/softmax.h` exists.
+        
+        // Let's implement simple softmax on CPU
+        std::vector<float> probs(vocab_size);
+        float max_logit = -1e9;
+        for (size_t i = 0; i < vocab_size; ++i) max_logit = std::max(max_logit, logits_ptr[i]);
+        
         float sum_exp = 0.0f;
-        for (uint32_t i = 0; i < vocab_size_; ++i) {
+        for (size_t i = 0; i < vocab_size; ++i) {
             probs[i] = std::exp(logits_ptr[i] - max_logit);
             sum_exp += probs[i];
         }
-        for (uint32_t i = 0; i < vocab_size_; ++i) {
-            probs[i] /= sum_exp;
-        }
+        for (size_t i = 0; i < vocab_size; ++i) probs[i] /= sum_exp;
         
-        float coin = RandomF32(state);
-        int next_token = SampleMult(probs.data(), vocab_size_, coin);
+        // Sample
+        float coin = RandomF32(kRngState);
+        int next_token = SampleMult(probs.data(), vocab_size, coin);
         
-        std::cout << Decode(next_token);
-        std::cout.flush();
+        // Decode and print
+        std::string token_str = Decode(next_token);
+        std::cout << token_str << std::flush;
         
-        // 将新生成的token放入输入序列中
+        // Update x for next step
+        // x is (1, seq_len).
+        // x[0, t] = next_token.
         if (t < sequence_length) {
+            // We need to update x_tensor (CPU) then copy to x (Device)?
+            // x is shared_ptr to Tensor on Device.
+            // We can't update it directly if on GPU.
+            // But we have `x_buff` which is pointer to `x_tensor` (CPU) data.
+            // Wait, `x` was created from `x_tensor.To(device)`.
+            // `x_tensor` is local.
             x_buff[t] = next_token;
-            x = std::make_shared<infini_train::Tensor>(x_tensor.To(device));
-        } else {
-            // 如果超过最大序列长度，则停止生成或采取滑动窗口（此处作业要求通常为定长）
-            break;
+            // Re-upload x?
+            // `x = std::make_shared<infini_train::Tensor>(x_tensor.To(device));`
+            // This is inefficient but simple.
+             x = std::make_shared<infini_train::Tensor>(x_tensor.To(device));
         }
     }
     std::cout << std::endl;

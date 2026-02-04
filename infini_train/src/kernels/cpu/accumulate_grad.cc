@@ -16,22 +16,25 @@ void AdamAccumulateGrad(const std::shared_ptr<Tensor> &grad, const std::shared_p
                         float beta1, float beta2, float eps, int64_t t) {
     // =================================== 作业 ===================================
     // TODO：实现Adam优化器的梯度累积和参数更新
-    // REF:
+    // REF: 
     // =================================== 作业 ===================================
-    float *p_grad = static_cast<float *>(grad->DataPtr());
-    float *p_param = static_cast<float *>(param->DataPtr());
-    float *p_m = static_cast<float *>(m->DataPtr());
-    float *p_v = static_cast<float *>(v->DataPtr());
     int64_t n = grad->NumElements();
+    float* grad_ptr = static_cast<float*>(grad->DataPtr());
+    float* param_ptr = static_cast<float*>(param->DataPtr());
+    float* m_ptr = static_cast<float*>(m->DataPtr());
+    float* v_ptr = static_cast<float*>(v->DataPtr());
+    
+    float beta1_t = std::pow(beta1, t);
+    float beta2_t = std::pow(beta2, t);
 
-    float bias_correction1 = 1.0f - std::pow(beta1, t);
-    float bias_correction2 = 1.0f - std::pow(beta2, t);
-    float step_size = learning_rate / bias_correction1;
-
+    #pragma omp parallel for
     for (int64_t i = 0; i < n; ++i) {
-        p_m[i] = beta1 * p_m[i] + (1.0f - beta1) * p_grad[i];
-        p_v[i] = beta2 * p_v[i] + (1.0f - beta2) * p_grad[i] * p_grad[i];
-        p_param[i] -= step_size * p_m[i] / (std::sqrt(p_v[i] / bias_correction2) + eps);
+        float g = grad_ptr[i];
+        m_ptr[i] = beta1 * m_ptr[i] + (1 - beta1) * g;
+        v_ptr[i] = beta2 * v_ptr[i] + (1 - beta2) * g * g;
+        float m_hat = m_ptr[i] / (1 - beta1_t);
+        float v_hat = v_ptr[i] / (1 - beta2_t);
+        param_ptr[i] -= learning_rate * m_hat / (std::sqrt(v_hat) + eps);
     }
 }
 

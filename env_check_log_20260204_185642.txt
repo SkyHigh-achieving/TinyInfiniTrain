@@ -1,0 +1,24 @@
+--- 1. Environment Check ---
+Attempting to update and install dependencies...
+Sudo failed or requires password. Skipping installation, checking existing tools.
+Checking cmake:
+wsl_ops.sh: line 30: cmake: command not found
+Checking make:
+GNU Make 4.3
+Built for x86_64-pc-linux-gnu
+Copyright (C) 1988-2020 Free Software Foundation, Inc.
+License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+Checking g++:
+g++ (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0
+Copyright (C) 2023 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+Checking git:
+git version 2.43.0
+Checking nvcc:
+wsl_ops.sh: line 46: /usr/local/cuda/bin/nvcc: No such file or directory
+Checking nvidia-smi:
+wsl_ops.sh: line 50: nvidia-smi: command not found

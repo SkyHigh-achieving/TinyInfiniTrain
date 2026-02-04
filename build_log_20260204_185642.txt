@@ -1,0 +1,6 @@
+Command: cmake .. -DUSE_CUDA=ON
+wsl_ops.sh: line 59: cmake: command not found
+Command: make -j8
+make: *** No targets specified and no makefile found.  Stop.
+Command: make test-cpp
+make: *** No rule to make target 'test-cpp'.  Stop.

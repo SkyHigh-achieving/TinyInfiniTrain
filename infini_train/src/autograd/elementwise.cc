@@ -25,7 +25,7 @@ std::vector<std::shared_ptr<Tensor>> Neg::Backward(const std::vector<std::shared
     CHECK_EQ(grad_outputs.size(), 1);
     const auto &grad_output = grad_outputs[0];
     auto device = grad_output->GetDevice().Type();
-    auto kernel = Dispatcher::Instance().GetKernel({device, "NegBackward"});
+    auto kernel = Dispatcher::Instance().GetKernel({device, "NegForward"});
     return {kernel.Call<std::shared_ptr<Tensor>>(grad_output)};
 }
 

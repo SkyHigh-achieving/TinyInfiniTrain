@@ -15,17 +15,43 @@ std::shared_ptr<Tensor> MatmulForward(const std::shared_ptr<Tensor> &input, cons
     // TODO：实现CPU上的矩阵乘法前向计算
     // REF:
     // =================================== 作业 ===================================
-    const auto &input_dims = input->Dims();
-    const auto &other_dims = other->Dims();
+    auto input_dims = input->Dims();
+    auto other_dims = other->Dims();
     CHECK_GE(input_dims.size(), 2);
     CHECK_GE(other_dims.size(), 2);
-    CHECK_EQ(*input_dims.rbegin(), *(other_dims.rbegin() + 1));
 
+    int64_t K = input_dims.back();
+    CHECK_EQ(other_dims[other_dims.size() - 2], K);
+    
     std::vector<int64_t> output_dims = input_dims;
-    *output_dims.rbegin() = *other_dims.rbegin();
+    output_dims.back() = other_dims.back();
+    
     auto output = std::make_shared<Tensor>(output_dims, DataType::kFLOAT32);
-
-    output->EigenMatrix() = input->EigenMatrix() * other->EigenMatrix();
+    
+    int64_t batch_size = 1;
+    for (size_t i = 0; i < input_dims.size() - 2; ++i) {
+        batch_size *= input_dims[i];
+    }
+    
+    int64_t M = input_dims[input_dims.size() - 2];
+    int64_t N = other_dims.back();
+    
+    float* input_ptr = static_cast<float*>(input->DataPtr());
+    float* other_ptr = static_cast<float*>(other->DataPtr());
+    float* output_ptr = static_cast<float*>(output->DataPtr());
+    
+    #pragma omp parallel for
+    for (int64_t b = 0; b < batch_size; ++b) {
+        Eigen::Map<Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> 
+            mat_a(input_ptr + b * M * K, M, K);
+        Eigen::Map<Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> 
+            mat_b(other_ptr + b * K * N, K, N);
+        Eigen::Map<Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> 
+            mat_c(output_ptr + b * M * N, M, N);
+            
+        mat_c = mat_a * mat_b;
+    }
+    
     return output;
 }
 
@@ -36,12 +62,8 @@ MatmulBackward(const std::shared_ptr<Tensor> &input, const std::shared_ptr<Tenso
     // TODO：实现CPU上的矩阵乘法反向传播
     // REF:
     // =================================== 作业 ===================================
-    auto grad_input = std::make_shared<Tensor>(input->Dims(), DataType::kFLOAT32);
-    auto grad_other = std::make_shared<Tensor>(other->Dims(), DataType::kFLOAT32);
-
-    grad_input->EigenMatrix() = grad_output->EigenMatrix() * other->EigenMatrix().transpose();
-    grad_other->EigenMatrix() = input->EigenMatrix().transpose() * grad_output->EigenMatrix();
-
+    auto grad_input = grad_output->Matmul(other->Transpose(-2, -1));
+    auto grad_other = input->Transpose(-2, -1)->Matmul(grad_output);
     return {grad_input, grad_other};
 }
 
