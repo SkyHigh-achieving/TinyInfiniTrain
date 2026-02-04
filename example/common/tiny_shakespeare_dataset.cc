@@ -101,27 +101,36 @@ TinyShakespeareFile ReadTinyShakespeareFile(const std::string &path, size_t sequ
     int64_t num_samples = num_toks / sequence_length; 
     std::vector<int64_t> logical_dims = {num_samples, static_cast<int64_t>(sequence_length)};
     
-    return {tensor, logical_dims, type};
+    TinyShakespeareFile file;
+    file.tensor = *tensor;
+    file.dims = logical_dims;
+    file.type = type;
+    return file;
 }
 } // namespace
 
-TinyShakespeareDataset::TinyShakespeareDataset(const std::string &filepath, size_t sequence_length) {
+TinyShakespeareDataset::TinyShakespeareDataset(const std::string &filepath, size_t sequence_length) 
+    : sequence_length_(sequence_length) {
     // =================================== 作业 ===================================
     // TODO：初始化数据集实例
     // HINT: 调用ReadTinyShakespeareFile加载数据文件
     // =================================== 作业 ===================================
     text_file_ = ReadTinyShakespeareFile(filepath, sequence_length);
-    sequence_size_in_bytes_ = sequence_length * kTypeToSize.at(text_file_.type);
-    num_samples_ = text_file_.dims[0];
+    const_cast<size_t&>(sequence_size_in_bytes_) = sequence_length * kTypeToSize.at(text_file_.type);
+    const_cast<size_t&>(num_samples_) = text_file_.dims[0];
 }
 
 std::pair<std::shared_ptr<infini_train::Tensor>, std::shared_ptr<infini_train::Tensor>>
 TinyShakespeareDataset::operator[](size_t idx) const {
     CHECK_LT(idx, text_file_.dims[0] - 1);
     std::vector<int64_t> dims = std::vector<int64_t>(text_file_.dims.begin() + 1, text_file_.dims.end());
+    
+    auto tensor_ptr = std::make_shared<infini_train::Tensor>(text_file_.tensor);
+    size_t token_size = kTypeToSize.at(text_file_.type);
+    
     // x: (seq_len), y: (seq_len) -> stack -> (bs, seq_len) (bs, seq_len)
-    return {std::make_shared<infini_train::Tensor>(text_file_.tensor, idx * sequence_size_in_bytes_, dims),
-            std::make_shared<infini_train::Tensor>(text_file_.tensor, idx * sequence_size_in_bytes_ + sizeof(int64_t),
+    return {std::make_shared<infini_train::Tensor>(tensor_ptr, idx * sequence_size_in_bytes_, dims),
+            std::make_shared<infini_train::Tensor>(tensor_ptr, idx * sequence_size_in_bytes_ + token_size,
                                                    dims)};
 }
 
