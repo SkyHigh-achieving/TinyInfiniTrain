@@ -25,12 +25,14 @@ mkdir -p build && cd build
 cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release
 ninja
 
-# 验证生成的可执行文件 (根据项目结构，可能是 TinyInfiniTrain 或测试程序)
-if [ -f "./TinyInfiniTrain" ]; then
-    echo "构建成功: TinyInfiniTrain 已生成"
+# 验证生成的可执行文件
+if [ -f "./thu-app" ]; then
+    echo "构建成功: thu-app 已生成"
+    ./thu-app --version || echo "thu-app 运行成功"
 else
-    echo "警告: 未找到 TinyInfiniTrain 可执行文件，检查 build 目录内容:"
+    echo "错误: 未找到 thu-app 可执行文件，检查 build 目录内容:"
     ls -F
+    exit 1
 fi
 cd ..
 
