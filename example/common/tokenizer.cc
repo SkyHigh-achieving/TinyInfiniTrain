@@ -69,22 +69,32 @@ int SampleMult(float *probabilities, int n, float coin) {
 }
 
 Tokenizer::Tokenizer(const std::string &filepath) {
-    /* ===================================== 作业 =====================================
-    TODO：实现Tokenizer二进制文件加载
+    std::ifstream ifs(filepath, std::ios::binary);
+    CHECK(ifs.is_open()) << "Failed to open file: " << filepath;
 
-    文件格式说明：
-    ----------------------------------------------------------------------------------
-    | HEADER (1024 bytes)                     | VOCAB TABLE                           |
-    | magic(4B) | version(4B) | vocab_size(4B) | reserved(1012B) | token词表数据       |
-    ----------------------------------------------------------------------------------
-    ===================================== 作业 ===================================== */
+    auto header_bytes = ReadSeveralBytesFromIfstream(1024, &ifs);
+    magic_number_ = BytesToType<uint32_t>(header_bytes, 0);
+    uint32_t version = BytesToType<uint32_t>(header_bytes, 4);
+    vocab_size_ = BytesToType<uint32_t>(header_bytes, 8);
+
+    auto it = kEotMap.find(magic_number_);
+    CHECK(it != kEotMap.end()) << "Invalid magic number: " << magic_number_;
+    eot_token_ = it->second;
+
+    token_table_.resize(vocab_size_);
+    for (uint32_t i = 0; i < vocab_size_; ++i) {
+        uint8_t len;
+        ifs.read(reinterpret_cast<char *>(&len), 1);
+        std::string token(len, ' ');
+        ifs.read(&token[0], len);
+        token_table_[i] = std::move(token);
+    }
 }
 
 std::string Tokenizer::Decode(uint32_t token_id) const {
-    /* ===================================== 作业 =====================================
-    TODO：实现token_id到文本的转换
-    功能描述：根据token_id返回对应的文本片段
-    ===================================== 作业 ===================================== */
+    if (token_id < token_table_.size()) {
+        return token_table_[token_id];
+    }
     return "";
 }
 
@@ -104,13 +114,46 @@ void Tokenizer::GenerateText(infini_train::nn::Module &model, uint32_t batch_siz
     std::cout << "The meaning of life is";
 
     auto x = std::make_shared<infini_train::Tensor>(x_tensor.To(device));
-    uint64_t kRngState = kRngState;
+    uint64_t state = kRngState;
     LOG(INFO) << "start generate text:";
     for (int t = prompt_len; t < text_length; t++) {
-        /* ===================================== 作业 =====================================
-        TODO：实现单步文本生成逻辑
-        HINT：调用model.Forward推理获取logits，根据推理结果进行随机采样，调用Decode获取文本结果
-        ===================================== 作业 ===================================== */
+        auto outputs = model.Forward({x});
+        auto logits = outputs[0]->To(Device(DeviceType::kCPU, 0));
+        
+        // logits: (batch_size, sequence_length, vocab_size)
+        // 获取最后一个token对应的logits进行采样
+        float *logits_ptr = static_cast<float *>(logits.DataPtr()) + (0 * sequence_length + (t - 1)) * vocab_size_;
+        
+        // Softmax with Temperature=1.0 and Top-k (optional, here we do simple sampling)
+        float max_logit = logits_ptr[0];
+        for (uint32_t i = 1; i < vocab_size_; ++i) {
+            if (logits_ptr[i] > max_logit) max_logit = logits_ptr[i];
+        }
+        
+        std::vector<float> probs(vocab_size_);
+        float sum_exp = 0.0f;
+        for (uint32_t i = 0; i < vocab_size_; ++i) {
+            probs[i] = std::exp(logits_ptr[i] - max_logit);
+            sum_exp += probs[i];
+        }
+        for (uint32_t i = 0; i < vocab_size_; ++i) {
+            probs[i] /= sum_exp;
+        }
+        
+        float coin = RandomF32(state);
+        int next_token = SampleMult(probs.data(), vocab_size_, coin);
+        
+        std::cout << Decode(next_token);
+        std::cout.flush();
+        
+        // 将新生成的token放入输入序列中
+        if (t < sequence_length) {
+            x_buff[t] = next_token;
+            x = std::make_shared<infini_train::Tensor>(x_tensor.To(device));
+        } else {
+            // 如果超过最大序列长度，则停止生成或采取滑动窗口（此处作业要求通常为定长）
+            break;
+        }
     }
     std::cout << std::endl;
 }

@@ -53,31 +53,46 @@ template <typename T> T BytesToType(const std::vector<uint8_t> &bytes, size_t of
 }
 
 TinyShakespeareFile ReadTinyShakespeareFile(const std::string &path, size_t sequence_length) {
-    /* =================================== 作业 ===================================
-       TODO：实现二进制数据集文件解析
-       文件格式说明：
-    ----------------------------------------------------------------------------------
-    | HEADER (1024 bytes)                     | DATA (tokens)                        |
-    | magic(4B) | version(4B) | num_toks(4B) | reserved(1012B) | token数据           |
-    ----------------------------------------------------------------------------------
-       =================================== 作业 =================================== */
+    std::ifstream ifs(path, std::ios::binary);
+    CHECK(ifs.is_open()) << "Failed to open file: " << path;
+
+    auto header_bytes = ReadSeveralBytesFromIfstream(1024, &ifs);
+    uint32_t magic = BytesToType<uint32_t>(header_bytes, 0);
+    uint32_t version = BytesToType<uint32_t>(header_bytes, 4);
+    uint32_t num_toks = BytesToType<uint32_t>(header_bytes, 8);
+
+    CHECK_EQ(magic, 20240519) << "Invalid magic number";
+    auto it = kTypeMap.find(version);
+    CHECK(it != kTypeMap.end()) << "Invalid version: " << version;
+    TinyShakespeareType type = it->second;
+
+    DataType dtype = kTypeToDataType.at(type);
+    size_t element_size = kTypeToSize.at(type);
+    size_t total_bytes = static_cast<size_t>(num_toks) * element_size;
+
+    infini_train::Tensor tensor({static_cast<int64_t>(num_toks)}, dtype);
+    ifs.read(reinterpret_cast<char *>(tensor.DataPtr()), total_bytes);
+
+    return {type, {static_cast<int64_t>(num_toks)}, std::move(tensor)};
 }
 } // namespace
 
-TinyShakespeareDataset::TinyShakespeareDataset(const std::string &filepath, size_t sequence_length) {
-    // =================================== 作业 ===================================
-    // TODO：初始化数据集实例
-    // HINT: 调用ReadTinyShakespeareFile加载数据文件
-    // =================================== 作业 ===================================
+TinyShakespeareDataset::TinyShakespeareDataset(const std::string &filepath, size_t sequence_length)
+    : sequence_length_(sequence_length),
+      text_file_(ReadTinyShakespeareFile(filepath, sequence_length)),
+      sequence_size_in_bytes_(sequence_length * kTypeToSize.at(text_file_.type)),
+      num_samples_((text_file_.dims[0] - 1) / sequence_length) {
+    // Update dims for operator[]
+    text_file_.dims = {static_cast<int64_t>(num_samples_), static_cast<int64_t>(sequence_length_)};
 }
 
 std::pair<std::shared_ptr<infini_train::Tensor>, std::shared_ptr<infini_train::Tensor>>
 TinyShakespeareDataset::operator[](size_t idx) const {
-    CHECK_LT(idx, text_file_.dims[0] - 1);
-    std::vector<int64_t> dims = std::vector<int64_t>(text_file_.dims.begin() + 1, text_file_.dims.end());
-    // x: (seq_len), y: (seq_len) -> stack -> (bs, seq_len) (bs, seq_len)
+    CHECK_LT(idx, num_samples_);
+    std::vector<int64_t> dims = {static_cast<int64_t>(sequence_length_)};
+    size_t element_size = sequence_size_in_bytes_ / sequence_length_;
     return {std::make_shared<infini_train::Tensor>(text_file_.tensor, idx * sequence_size_in_bytes_, dims),
-            std::make_shared<infini_train::Tensor>(text_file_.tensor, idx * sequence_size_in_bytes_ + sizeof(int64_t),
+            std::make_shared<infini_train::Tensor>(text_file_.tensor, idx * sequence_size_in_bytes_ + element_size,
                                                    dims)};
 }
 

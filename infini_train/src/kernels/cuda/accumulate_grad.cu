@@ -22,6 +22,17 @@ void AccumulateGrad(const std::shared_ptr<Tensor> &gradient, float rate, const s
     AccumulateGradKernel<<<num_blocks, threads_per_block>>>(grad_ptr, rate, tensor_ptr, num_elements);
 }
 
+__global__ void AdamAccumulateGradKernel(const float *grad, float *param, float *m, float *v, float step_size,
+                                         float beta1, float beta2, float bias_correction2, float eps,
+                                         size_t num_elements) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < num_elements) {
+        m[idx] = beta1 * m[idx] + (1.0f - beta1) * grad[idx];
+        v[idx] = beta2 * v[idx] + (1.0f - beta2) * grad[idx] * grad[idx];
+        param[idx] -= step_size * m[idx] / (sqrtf(v[idx] / bias_correction2) + eps);
+    }
+}
+
 void AdamAccumulateGrad(const std::shared_ptr<Tensor> &grad, const std::shared_ptr<Tensor> &param,
                         const std::shared_ptr<Tensor> &m, const std::shared_ptr<Tensor> &v, float learning_rate,
                         float beta1, float beta2, float eps, int64_t t) {
@@ -29,6 +40,18 @@ void AdamAccumulateGrad(const std::shared_ptr<Tensor> &grad, const std::shared_p
     // TODO：实现Adam优化器的梯度累积和参数更新
     // REF:
     // =================================== 作业 ===================================
+    size_t num_elements = grad->NumElements();
+    float bias_correction1 = 1.0f - powf(beta1, t);
+    float bias_correction2 = 1.0f - powf(beta2, t);
+    float step_size = learning_rate / bias_correction1;
+
+    int threads_per_block = 256;
+    int num_blocks = (num_elements + threads_per_block - 1) / threads_per_block;
+
+    AdamAccumulateGradKernel<<<num_blocks, threads_per_block>>>(
+        static_cast<const float *>(grad->DataPtr()), static_cast<float *>(param->DataPtr()),
+        static_cast<float *>(m->DataPtr()), static_cast<float *>(v->DataPtr()), step_size, beta1, beta2,
+        bias_correction2, eps, num_elements);
 }
 } // namespace infini_train::kernels::cuda
 

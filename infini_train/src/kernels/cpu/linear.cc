@@ -15,9 +15,18 @@ std::shared_ptr<Tensor> MatmulForward(const std::shared_ptr<Tensor> &input, cons
     // TODO：实现CPU上的矩阵乘法前向计算
     // REF:
     // =================================== 作业 ===================================
+    const auto &input_dims = input->Dims();
+    const auto &other_dims = other->Dims();
+    CHECK_GE(input_dims.size(), 2);
+    CHECK_GE(other_dims.size(), 2);
+    CHECK_EQ(*input_dims.rbegin(), *(other_dims.rbegin() + 1));
 
-    auto output = std::make_shared<Tensor>();
-    return {output};
+    std::vector<int64_t> output_dims = input_dims;
+    *output_dims.rbegin() = *other_dims.rbegin();
+    auto output = std::make_shared<Tensor>(output_dims, DataType::kFLOAT32);
+
+    output->EigenMatrix() = input->EigenMatrix() * other->EigenMatrix();
+    return output;
 }
 
 std::tuple<std::shared_ptr<Tensor>, std::shared_ptr<Tensor>>
@@ -27,9 +36,12 @@ MatmulBackward(const std::shared_ptr<Tensor> &input, const std::shared_ptr<Tenso
     // TODO：实现CPU上的矩阵乘法反向传播
     // REF:
     // =================================== 作业 ===================================
+    auto grad_input = std::make_shared<Tensor>(input->Dims(), DataType::kFLOAT32);
+    auto grad_other = std::make_shared<Tensor>(other->Dims(), DataType::kFLOAT32);
 
-    auto grad_input = std::make_shared<Tensor>();
-    auto grad_other = std::make_shared<Tensor>();
+    grad_input->EigenMatrix() = grad_output->EigenMatrix() * other->EigenMatrix().transpose();
+    grad_other->EigenMatrix() = input->EigenMatrix().transpose() * grad_output->EigenMatrix();
+
     return {grad_input, grad_other};
 }
 
