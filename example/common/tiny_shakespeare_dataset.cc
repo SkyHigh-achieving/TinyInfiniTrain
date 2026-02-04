@@ -129,8 +129,8 @@ TinyShakespeareDataset::operator[](size_t idx) const {
     size_t token_size = kTypeToSize.at(text_file_.type);
     
     // x: (seq_len), y: (seq_len) -> stack -> (bs, seq_len) (bs, seq_len)
-    return {std::make_shared<infini_train::Tensor>(tensor_ptr, idx * sequence_size_in_bytes_, dims),
-            std::make_shared<infini_train::Tensor>(tensor_ptr, idx * sequence_size_in_bytes_ + token_size,
+    return {std::make_shared<infini_train::Tensor>(*tensor_ptr, idx * sequence_size_in_bytes_, dims),
+            std::make_shared<infini_train::Tensor>(*tensor_ptr, idx * sequence_size_in_bytes_ + token_size,
                                                    dims)};
 }
 

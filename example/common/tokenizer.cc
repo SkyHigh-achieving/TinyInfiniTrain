@@ -103,8 +103,8 @@ Tokenizer::Tokenizer(const std::string &filepath) {
 }
 
 std::string Tokenizer::Decode(uint32_t token_id) const {
-    if (token_table_.count(token_id)) {
-        return token_table_.at(token_id);
+    if (token_id < token_table_.size()) {
+        return token_table_[token_id];
     }
     return "";
 }
