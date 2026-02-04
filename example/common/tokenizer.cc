@@ -98,17 +98,13 @@ Tokenizer::Tokenizer(const std::string &filepath) {
         uint8_t len = len_byte[0];
         std::vector<uint8_t> str_bytes = ReadSeveralBytesFromIfstream(len, &ifs);
         std::string token_str(str_bytes.begin(), str_bytes.end());
-        vocab_[i] = token_str;
+        token_table_[i] = token_str;
     }
 }
 
 std::string Tokenizer::Decode(uint32_t token_id) const {
-    /* ===================================== 作业 =====================================
-    TODO：实现token_id到文本的转换
-    功能描述：根据token_id返回对应的文本片段
-    ===================================== 作业 ===================================== */
-    if (vocab_.count(token_id)) {
-        return vocab_.at(token_id);
+    if (token_table_.count(token_id)) {
+        return token_table_.at(token_id);
     }
     return "";
 }
